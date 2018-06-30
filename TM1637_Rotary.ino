@@ -22,7 +22,8 @@ RotaryEncoder rotaryEncoder(A2, A3);
 typedef enum {
   ROTARY_IDLE,          // Il ne se passe rien
   ROTARY_SET_MINUTES,   // Fixe les minutes
-  ROTARY_SET_SECONDS    // Fixe les secondes
+  ROTARY_SET_SECONDS,    // Fixe les secondes
+  ROTARY_RESET
 }
 MyActions;
 
@@ -81,7 +82,7 @@ ISR(PCINT1_vect) {
 // Read the current position of the encoder and print out when changed.
 void loop()
 {
-  //  static int pos = 0; // static : la valeur est préservée entre les loop()
+  static int resetBlinkCount = 0; // static : la valeur est préservée entre les loop()
   static bool ledState = true; // sert à gérer les clignotements
 //  rotaryEncoder.tick(); // Inutile là, c'est dans ISR() que ça se passe
   // keep watching the push button:
@@ -113,10 +114,8 @@ void loop()
       pos = newPos;
       if (nextAction == ROTARY_SET_MINUTES) {
         minutes = pos;
-        // rotaryEncoder.setPosition(minutes);
       } else if (nextAction == ROTARY_SET_SECONDS) {
         seconds = pos;
-        // rotaryEncoder.setPosition(seconds);
       }
       countDown = seconds + (minutes * 60);
     } // if
@@ -126,7 +125,6 @@ void loop()
   }
 
   if (now - previousMillis >= 250) {
-
     if (nextAction == ROTARY_IDLE) {
       buffer[0] = display.encode(minutes / 10);
       buffer[1] = display.encode(minutes % 10);
@@ -151,6 +149,23 @@ void loop()
       } else {
         buffer[2] = 0;
         buffer[3] = 0;
+      }
+    } else if (nextAction == ROTARY_RESET) {
+      if (ledState) {
+        buffer[0] = display.encode(minutes / 10);
+        buffer[1] = display.encode(minutes % 10);
+        buffer[2] = display.encode(seconds / 10);
+        buffer[3] = display.encode(seconds % 10);
+      }else{
+        buffer[0] = 0;
+        buffer[1] = 0;
+        buffer[2] = 0;
+        buffer[3] = 0;
+      }
+      resetBlinkCount++;
+      if (resetBlinkCount == 4) {
+        resetBlinkCount = 0;
+        nextAction = ROTARY_IDLE;
       }
     }
     ledState = !ledState;
@@ -177,6 +192,9 @@ void myClickFunction() {
 // this function will be called when the button was pressed during 1 second.
 void myLongPressFunction() {
   // Mise à zéro du compteur
-  countDown = 0;
+  if (nextAction == ROTARY_IDLE) {
+    nextAction = ROTARY_RESET;
+    countDown = 0;
+  }
 }
 
