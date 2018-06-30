@@ -1,0 +1,7 @@
+{
+    "sketch": "TM1637_Rotary.ino",
+    "board": "arduino:avr:nano",
+    "configuration": "cpu=atmega328old",
+    "output": "../build",
+    "port": "/dev/cu.wchusbserial244320"
+}

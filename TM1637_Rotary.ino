@@ -1,3 +1,8 @@
+#include <Arduino.h>
+#include <OneButton.h>
+#include <RotaryEncoder.h>
+#include <SevenSegmentTM1637.h>
+
 // -----
 // SimplePollRotator.ino - Example for the RotaryEncoder library.
 // This class is implemented for use with the Arduino environment.
@@ -6,10 +11,6 @@
 // Hardware setup:
 // Attach a rotary encoder with output pins to A2 and A3.
 // The common contact should be attached to ground.
-
-#include "OneButton.h"
-#include <RotaryEncoder.h>
-#include "SevenSegmentTM1637.h"
 
 #define ROTARYMIN 0
 #define ROTARYMAX 59

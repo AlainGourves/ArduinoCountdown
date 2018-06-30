@@ -1,0 +1,53 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/OneButton/src",
+                "/Applications/Arduino.app/Contents/Java/libraries",
+                "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/cores/arduino",
+                "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/avr/include",
+                "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/lib/gcc/avr/4.9.2/include",
+                "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/variants/standard",
+                "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/**",
+                "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/cores/arduino",
+                "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/tools/avr-gcc/4.9.2-atmel3.5.4-arduino2/avr/**",
+                "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/libraries/**",
+                "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/variants/standard",
+                "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/RotaryEncoder",
+                "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/OneButton",
+                "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/SevenSegmentTM1637/src",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [],
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ],
+            "compilerPath": "/usr/bin/clang",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "clang-x64",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": false,
+                "path": [
+                    "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/OneButton/src",
+                    "/Applications/Arduino.app/Contents/Java/libraries",
+                    "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/cores/arduino",
+                    "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/avr/include",
+                    "/Applications/Arduino.app/Contents/Java/hardware/tools/avr/lib/gcc/avr/4.9.2/include",
+                    "/Applications/Arduino.app/Contents/Java/hardware/arduino/avr/variants/standard",
+                    "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/**",
+                    "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/cores/arduino",
+                    "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/tools/avr-gcc/4.9.2-atmel3.5.4-arduino2/avr/**",
+                    "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/libraries/**",
+                    "/Volumes/Macintosh HD/Users/macmini/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/variants/standard",
+                    "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/RotaryEncoder",
+                    "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/OneButton",
+                    "/Volumes/Macintosh HD/Users/macmini/Documents/Arduino/libraries/SevenSegmentTM1637/src"
+                ]
+            }
+        }
+    ],
+    "version": 4
+}
