@@ -12,17 +12,16 @@ RotaryEncoder rotaryEncoder(A2, A3);
 
 // Actions du Rotary Encoder
 typedef enum {
-  ROTARY_IDLE,          // Il ne se passe rien
-  ROTARY_SET_MINUTES,   // Fixe les minutes
-  ROTARY_SET_SECONDS,    // Fixe les secondes
-  ROTARY_RESET
-} rotaryActions;
+  COUNTDOWN_IDLE,     // Il ne se passe rien
+  ROTARY_SET_MINUTES, // Fixe les minutes
+  ROTARY_SET_SECONDS, // Fixe les secondes
+  ROTARY_RESET,       // Met countDown à 0
+  COUNTDOWN_1,        // countDown > 10s
+  COUNTDOWN_2,        // 5s < countDown <= 10s
+  COUNTDOWN_3,        // countDown <= 5s
+  COUNTDOWN_END       // countDown = 0
+} myActions;
 
-// Actions du timer
-typedef enum {
-  TIMER_ON,
-  TIMER_OFF
-} timerActions;
 
 // Actions de l'affichage Led
 typedef enum {
@@ -32,30 +31,26 @@ typedef enum {
   LEDS_11  // tout allumé
 } ledActions;
 
-// Actions pendant le compte à rebours
-typedef enum {
-  COUNTDOWN_1,  // countDown > 10s
-  COUNTDOWN_2,  // 5s < countDown <= 10s
-  COUNTDOWN_3,  // countDown <= 5s
-  COUNTDOWN_END // countDown = 0
-} countDownActions;
 
 // Switch du rotary encoder sur D6
 OneButton rotarySwitch(6, true);
-timerActions nextTimerAction = TIMER_OFF;
 // Bouton  Start/Stop
 // S -> D2 (interrupt pin), - -> GND
 OneButton startButton(10, true);
-rotaryActions nextRotaryAction = ROTARY_IDLE; // no action when starting
+myActions myNextAction = COUNTDOWN_IDLE; // no action when starting
 
 ledActions nextLedAction = LEDS_11;
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 5;   // define DIO pin (any digital pin)
+const byte PIN_BUZZER = 11;   // S sur D11, via réisistance de 100-200 ohms
 SevenSegmentTM1637    display(PIN_CLK, PIN_DIO);
 
 unsigned long previousMillisBlink;
 unsigned long previousMillisTimer;
+unsigned long previousMillisAlarm; // pour limiter la duréee de l'alarme de fin
+unsigned long alarmLength = 10UL * 1000; 
+
 uint16_t timer = 179; // 5 minutes 180; // 3 minutes
 uint16_t countDown;
 uint8_t minutes;
@@ -63,6 +58,8 @@ uint8_t seconds;
 uint8_t buffer[4];
 
 bool isBlink;
+// Pour savoir si le timer tourne ou non
+bool isTimer;
 int pos = 0;
 
 void setup()
@@ -91,7 +88,7 @@ void setup()
   countDown = timer;
   minutes = countDown / 60;
   seconds = countDown % 60;
-  // pos = minutes;
+  isTimer = false;
 } // setup()
 
 // The Interrupt Service Routine for Pin Change Interrupt 1
@@ -114,29 +111,71 @@ void loop()
   minutes = countDown / 60;
   seconds = countDown % 60;
 
-  if (nextRotaryAction == ROTARY_IDLE) {
-    isBlink = false;
-    if (nextTimerAction == TIMER_ON) {
-      if (now - previousMillisTimer >= 1000) {
-        countDown--;
-        previousMillisTimer = now;
-      }
-      if (countDown == 65535) {
-        // on est après zéro
-        nextTimerAction = TIMER_OFF;
-        countDown = 0;
-        tone(11, 1047, 1000);
-      }
-    } else {
 
-    }
-  } else  if (nextRotaryAction == ROTARY_SET_MINUTES) {
-    isBlink = true;
-  } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
-    isBlink = true;
-  } else if (nextRotaryAction == ROTARY_RESET) {
-    isBlink = false;
+  switch (myNextAction)
+  {
+    case COUNTDOWN_IDLE:
+      isBlink = false;
+      noTone(PIN_BUZZER);
+      break;
+  
+    case ROTARY_SET_MINUTES:
+      isBlink = true;
+      break;
+  
+    case ROTARY_SET_SECONDS:
+      isBlink = true;
+      break;
+
+    case ROTARY_RESET:
+      isBlink = false;
+      break;
+  
+    case COUNTDOWN_1:
+      isBlink = false;
+      if (now - previousMillisTimer >= 1000) {
+        previousMillisTimer = now;
+        countDown--;
+        if (countDown == 10) {
+          myNextAction = COUNTDOWN_2;
+        }
+      }
+      break;
+    case COUNTDOWN_2:
+      isBlink = false;
+      if (now - previousMillisTimer >= 1000) {
+        previousMillisTimer = now;
+        countDown--;
+        if (countDown == 5) {
+          myNextAction = COUNTDOWN_3;
+        }
+      }
+      break;
+
+    case COUNTDOWN_3:
+      isBlink = false;
+      if (now - previousMillisTimer >= 1000) {
+        previousMillisTimer = now;
+        countDown--;
+        if (countDown == 0) {
+          previousMillisAlarm = now;
+          myNextAction = COUNTDOWN_END;
+        }
+        tone(PIN_BUZZER, 554, 250);
+      }
+      break;
+     
+    case COUNTDOWN_END:
+      isBlink = false;
+      tone(PIN_BUZZER, 1047, 250);
+      if (now - previousMillisAlarm >= alarmLength) {
+        isTimer = false;
+        myNextAction = COUNTDOWN_IDLE;
+      }
+      break;
+  
   }
+
 
   if (isBlink) {
     int newPos = rotaryEncoder.getPosition();
@@ -150,9 +189,9 @@ void loop()
     }
     if (pos != newPos) {
       pos = newPos;
-      if (nextRotaryAction == ROTARY_SET_MINUTES) {
+      if (myNextAction == ROTARY_SET_MINUTES) {
         minutes = pos;
-      } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
+      } else if (myNextAction == ROTARY_SET_SECONDS) {
         seconds = pos;
       }
       countDown = seconds + (minutes * 60);
@@ -162,31 +201,42 @@ void loop()
     rotaryEncoder.setPosition(pos);
   }
  
-  if (now - previousMillisBlink >= 250) {
-    if (nextRotaryAction == ROTARY_IDLE) {
+  // Gestion des clignotements
+  if (now - previousMillisBlink >= 125 && (myNextAction == COUNTDOWN_3 || myNextAction == COUNTDOWN_END)) {
+    if (ledState) {
       nextLedAction = LEDS_11;
-    } else if (nextRotaryAction == ROTARY_SET_MINUTES) {
+    }else{
+      nextLedAction = LEDS_00;
+    }
+    ledState = !ledState;
+    previousMillisBlink = now;
+  } else if (now - previousMillisBlink >= 250) {
+    if (myNextAction == COUNTDOWN_IDLE) {
+      nextLedAction = LEDS_11;
+    } else if (myNextAction == ROTARY_SET_MINUTES) {
       if (ledState) {
         nextLedAction = LEDS_11;
       } else {
         nextLedAction = LEDS_01;
       }
-    } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
+    } else if (myNextAction == ROTARY_SET_SECONDS) {
       if (ledState) {
         nextLedAction = LEDS_11;
       } else {
         nextLedAction = LEDS_10;
       }
-    } else if (nextRotaryAction == ROTARY_RESET) {
+    } else if (myNextAction == ROTARY_RESET || myNextAction == COUNTDOWN_2) {
       if (ledState) {
         nextLedAction = LEDS_11;
       }else{
         nextLedAction = LEDS_00;
       }
-      resetBlinkCount++;
-      if (resetBlinkCount == 4) {
-        resetBlinkCount = 0;
-        nextRotaryAction = ROTARY_IDLE;
+      if (myNextAction == ROTARY_RESET) {
+        resetBlinkCount++;
+        if (resetBlinkCount == 4) {
+          resetBlinkCount = 0;
+          myNextAction = COUNTDOWN_IDLE;
+        }
       }
     }
     ledState = !ledState;
@@ -231,14 +281,14 @@ void loop()
 
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myClickFunction() {
-  if (nextRotaryAction == ROTARY_IDLE) {
-    nextRotaryAction = ROTARY_SET_MINUTES;
+  if (myNextAction == COUNTDOWN_IDLE) {
+    myNextAction = ROTARY_SET_MINUTES;
     pos = minutes;
-  } else if (nextRotaryAction == ROTARY_SET_MINUTES) {
-    nextRotaryAction = ROTARY_SET_SECONDS;
+  } else if (myNextAction == ROTARY_SET_MINUTES) {
+    myNextAction = ROTARY_SET_SECONDS;
     pos = seconds;
-  } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
-    nextRotaryAction = ROTARY_IDLE;
+  } else if (myNextAction == ROTARY_SET_SECONDS) {
+    myNextAction = COUNTDOWN_IDLE;
   }
   rotaryEncoder.setPosition(pos);
 } // myClickFunction
@@ -246,19 +296,21 @@ void myClickFunction() {
 // this function will be called when the button was pressed during 1 second.
 void myLongPressFunction() {
   // Mise à zéro du compteur
-  if (nextRotaryAction == ROTARY_IDLE) {
-    nextRotaryAction = ROTARY_RESET;
+  if (myNextAction == COUNTDOWN_IDLE) {
+    myNextAction = ROTARY_RESET;
     countDown = 0;
   }
 }
 
 void myStartFunction() {
-  Serial.println("Click!");
-  if (nextRotaryAction == ROTARY_IDLE) {
-    if (nextTimerAction == TIMER_OFF && countDown != 0) {
-      nextTimerAction = TIMER_ON;
-    } else {
-      nextTimerAction = TIMER_OFF;
+  if (myNextAction == COUNTDOWN_IDLE) {
+    if (!isTimer && countDown != 0) {
+      isTimer = true;
+      myNextAction = COUNTDOWN_1;
     }
+  } else {
+    // Stop
+    isTimer = false;
+    myNextAction = COUNTDOWN_IDLE;
   }
 }
