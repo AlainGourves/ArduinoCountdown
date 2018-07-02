@@ -3,14 +3,6 @@
 #include <RotaryEncoder.h>
 #include <SevenSegmentTM1637.h>
 
-// -----
-// SimplePollRotator.ino - Example for the RotaryEncoder library.
-// This class is implemented for use with the Arduino environment.
-// Copyright (c) by Matthias Hertel, http://www.mathertel.de
-
-// Hardware setup:
-// Attach a rotary encoder with output pins to A2 and A3.
-// The common contact should be attached to ground.
 
 #define ROTARYMIN 0
 #define ROTARYMAX 59
@@ -24,19 +16,46 @@ typedef enum {
   ROTARY_SET_MINUTES,   // Fixe les minutes
   ROTARY_SET_SECONDS,    // Fixe les secondes
   ROTARY_RESET
-}
-MyActions;
+} rotaryActions;
+
+// Actions du timer
+typedef enum {
+  TIMER_ON,
+  TIMER_OFF
+} timerActions;
+
+// Actions de l'affichage Led
+typedef enum {
+  LEDS_00, // tout éteint
+  LEDS_01, // minutes éteint, secondes allumé 
+  LEDS_10, // minutes allumé, secondes éteint
+  LEDS_11  // tout allumé
+} ledActions;
+
+// Actions pendant le compte à rebours
+typedef enum {
+  COUNTDOWN_1,  // countDown > 10s
+  COUNTDOWN_2,  // 5s < countDown <= 10s
+  COUNTDOWN_3,  // countDown <= 5s
+  COUNTDOWN_END // countDown = 0
+} countDownActions;
 
 // Switch du rotary encoder sur D6
 OneButton rotarySwitch(6, true);
+timerActions nextTimerAction = TIMER_OFF;
+// Bouton  Start/Stop
+// S -> D2 (interrupt pin), - -> GND
+OneButton startButton(10, true);
+rotaryActions nextRotaryAction = ROTARY_IDLE; // no action when starting
 
-MyActions nextAction = ROTARY_IDLE; // no action when starting
+ledActions nextLedAction = LEDS_11;
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 5;   // define DIO pin (any digital pin)
 SevenSegmentTM1637    display(PIN_CLK, PIN_DIO);
 
-unsigned long previousMillis;
+unsigned long previousMillisBlink;
+unsigned long previousMillisTimer;
 uint16_t timer = 179; // 5 minutes 180; // 3 minutes
 uint16_t countDown;
 uint8_t minutes;
@@ -60,6 +79,8 @@ void setup()
   rotarySwitch.attachClick(myClickFunction);
   // long press event.
   rotarySwitch.attachLongPressStart(myLongPressFunction);
+
+  startButton.attachClick(myStartFunction);
 
   display.begin();            // initializes the display
   display.setBacklight(40);  // set the brightness to 100 %
@@ -87,17 +108,34 @@ void loop()
 //  rotaryEncoder.tick(); // Inutile là, c'est dans ISR() que ça se passe
   // keep watching the push button:
   rotarySwitch.tick();
+  startButton.tick();
 
   unsigned long now = millis();
   minutes = countDown / 60;
   seconds = countDown % 60;
 
-  if (nextAction == ROTARY_IDLE) {
+  if (nextRotaryAction == ROTARY_IDLE) {
     isBlink = false;
-  } else  if (nextAction == ROTARY_SET_MINUTES) {
+    if (nextTimerAction == TIMER_ON) {
+      if (now - previousMillisTimer >= 1000) {
+        countDown--;
+        previousMillisTimer = now;
+      }
+      if (countDown == 65535) {
+        // on est après zéro
+        nextTimerAction = TIMER_OFF;
+        countDown = 0;
+        tone(11, 1047, 1000);
+      }
+    } else {
+
+    }
+  } else  if (nextRotaryAction == ROTARY_SET_MINUTES) {
     isBlink = true;
-  } else if (nextAction == ROTARY_SET_SECONDS) {
+  } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
     isBlink = true;
+  } else if (nextRotaryAction == ROTARY_RESET) {
+    isBlink = false;
   }
 
   if (isBlink) {
@@ -112,9 +150,9 @@ void loop()
     }
     if (pos != newPos) {
       pos = newPos;
-      if (nextAction == ROTARY_SET_MINUTES) {
+      if (nextRotaryAction == ROTARY_SET_MINUTES) {
         minutes = pos;
-      } else if (nextAction == ROTARY_SET_SECONDS) {
+      } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
         seconds = pos;
       }
       countDown = seconds + (minutes * 60);
@@ -123,68 +161,84 @@ void loop()
     // empêche la valeur d'être actualisée quand on tourne le rotary pendant que isBlink est false
     rotaryEncoder.setPosition(pos);
   }
-
-  if (now - previousMillis >= 250) {
-    if (nextAction == ROTARY_IDLE) {
-      buffer[0] = display.encode(minutes / 10);
-      buffer[1] = display.encode(minutes % 10);
-      buffer[2] = display.encode(seconds / 10);
-      buffer[3] = display.encode(seconds % 10);
-    } else if (nextAction == ROTARY_SET_MINUTES) {
+ 
+  if (now - previousMillisBlink >= 250) {
+    if (nextRotaryAction == ROTARY_IDLE) {
+      nextLedAction = LEDS_11;
+    } else if (nextRotaryAction == ROTARY_SET_MINUTES) {
       if (ledState) {
-        buffer[0] = display.encode(minutes / 10);
-        buffer[1] = display.encode(minutes % 10);
+        nextLedAction = LEDS_11;
       } else {
-        buffer[0] = 0;
-        buffer[1] = 0;
+        nextLedAction = LEDS_01;
       }
-      buffer[2] = display.encode(seconds / 10);
-      buffer[3] = display.encode(seconds % 10);
-    } else if (nextAction == ROTARY_SET_SECONDS) {
-      buffer[0] = display.encode(minutes / 10);
-      buffer[1] = display.encode(minutes % 10);
+    } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
       if (ledState) {
-        buffer[2] = display.encode(seconds / 10);
-        buffer[3] = display.encode(seconds % 10);
+        nextLedAction = LEDS_11;
       } else {
-        buffer[2] = 0;
-        buffer[3] = 0;
+        nextLedAction = LEDS_10;
       }
-    } else if (nextAction == ROTARY_RESET) {
+    } else if (nextRotaryAction == ROTARY_RESET) {
       if (ledState) {
-        buffer[0] = display.encode(minutes / 10);
-        buffer[1] = display.encode(minutes % 10);
-        buffer[2] = display.encode(seconds / 10);
-        buffer[3] = display.encode(seconds % 10);
+        nextLedAction = LEDS_11;
       }else{
-        buffer[0] = 0;
-        buffer[1] = 0;
-        buffer[2] = 0;
-        buffer[3] = 0;
+        nextLedAction = LEDS_00;
       }
       resetBlinkCount++;
       if (resetBlinkCount == 4) {
         resetBlinkCount = 0;
-        nextAction = ROTARY_IDLE;
+        nextRotaryAction = ROTARY_IDLE;
       }
     }
     ledState = !ledState;
-    previousMillis = now;
+    previousMillisBlink = now;
   }
+
+  // Affichage Led
+  switch (nextLedAction)
+  {
+  case LEDS_00:
+    buffer[0] = 0;
+    buffer[1] = 0;
+    buffer[2] = 0;
+    buffer[3] = 0;
+    break;
+
+  case LEDS_01:
+    buffer[0] = 0;
+    buffer[1] = 0;
+    buffer[2] = display.encode(seconds / 10);
+    buffer[3] = display.encode(seconds % 10);
+    break;
+
+  case LEDS_10:
+    buffer[0] = display.encode(minutes / 10);
+    buffer[1] = display.encode(minutes % 10);
+    buffer[2] = 0;
+    buffer[3] = 0;
+    break;
+
+  case LEDS_11:
+    buffer[0] = display.encode(minutes / 10);
+    buffer[1] = display.encode(minutes % 10);
+    buffer[2] = display.encode(seconds / 10);
+    buffer[3] = display.encode(seconds % 10);
+    break;
+  }  // end of switch
+  
   display.setColonOn(true);
   display.printRaw(buffer, 4, 0);
 } // loop ()
 
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myClickFunction() {
-  if (nextAction == ROTARY_IDLE) {
-    nextAction = ROTARY_SET_MINUTES;
+  if (nextRotaryAction == ROTARY_IDLE) {
+    nextRotaryAction = ROTARY_SET_MINUTES;
     pos = minutes;
-  } else if (nextAction == ROTARY_SET_MINUTES) {
-    nextAction = ROTARY_SET_SECONDS;
+  } else if (nextRotaryAction == ROTARY_SET_MINUTES) {
+    nextRotaryAction = ROTARY_SET_SECONDS;
     pos = seconds;
-  } else if (nextAction == ROTARY_SET_SECONDS) {
-    nextAction = ROTARY_IDLE;
+  } else if (nextRotaryAction == ROTARY_SET_SECONDS) {
+    nextRotaryAction = ROTARY_IDLE;
   }
   rotaryEncoder.setPosition(pos);
 } // myClickFunction
@@ -192,9 +246,19 @@ void myClickFunction() {
 // this function will be called when the button was pressed during 1 second.
 void myLongPressFunction() {
   // Mise à zéro du compteur
-  if (nextAction == ROTARY_IDLE) {
-    nextAction = ROTARY_RESET;
+  if (nextRotaryAction == ROTARY_IDLE) {
+    nextRotaryAction = ROTARY_RESET;
     countDown = 0;
   }
 }
 
+void myStartFunction() {
+  Serial.println("Click!");
+  if (nextRotaryAction == ROTARY_IDLE) {
+    if (nextTimerAction == TIMER_OFF && countDown != 0) {
+      nextTimerAction = TIMER_ON;
+    } else {
+      nextTimerAction = TIMER_OFF;
+    }
+  }
+}
