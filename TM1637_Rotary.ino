@@ -45,6 +45,7 @@ const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 5;   // define DIO pin (any digital pin)
 const byte PIN_BUZZER = 11;   // S sur D11, via réisistance de 100-200 ohms
 SevenSegmentTM1637    display(PIN_CLK, PIN_DIO);
+const uint8_t TM1637Brightness = 40;
 
 unsigned long previousMillisBlink;
 unsigned long previousMillisTimer;
@@ -79,10 +80,10 @@ void setup()
 
   startButton.attachClick(myStartFunction);
 
-  display.begin();            // initializes the display
-  display.setBacklight(40);  // set the brightness to 100 %
-  display.print("init");      // display INIT on the display
-  delay(500);                // wait
+  display.begin();                        // initializes the display
+  display.setBacklight(TM1637Brightness); // set the brightness to 100 %
+  display.print("init");                  // display INIT on the display
+  delay(500);                             // wait
   display.clear();
 
   countDown = timer;
@@ -136,7 +137,7 @@ void loop()
       if (now - previousMillisTimer >= 1000) {
         previousMillisTimer = now;
         countDown--;
-        if (countDown == 10) {
+        if (countDown < 10) {
           myNextAction = COUNTDOWN_2;
         }
       }
@@ -146,7 +147,7 @@ void loop()
       if (now - previousMillisTimer >= 1000) {
         previousMillisTimer = now;
         countDown--;
-        if (countDown == 5) {
+        if (countDown < 5) {
           myNextAction = COUNTDOWN_3;
         }
       }
