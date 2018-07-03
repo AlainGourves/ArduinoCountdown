@@ -19,9 +19,11 @@ typedef enum {
   COUNTDOWN_1,        // countDown > 10s
   COUNTDOWN_2,        // 5s < countDown <= 10s
   COUNTDOWN_3,        // countDown <= 5s
-  COUNTDOWN_END       // countDown = 0
+  COUNTDOWN_END,      // countDown = 0
+  COUNTDOWN_SLEEP     // veille
 } myActions;
 
+myActions myNextAction = COUNTDOWN_IDLE; // no action when starting
 
 // Actions de l'affichage Led
 typedef enum {
@@ -31,21 +33,24 @@ typedef enum {
   LEDS_11  // tout allumé
 } ledActions;
 
+ledActions nextLedAction = LEDS_11;
 
 // Switch du rotary encoder sur D6
 OneButton rotarySwitch(6, true);
 // Bouton  Start/Stop
-// S -> D2 (interrupt pin), - -> GND
+// S -> D10, - -> GND
 OneButton startButton(10, true);
-myActions myNextAction = COUNTDOWN_IDLE; // no action when starting
 
-ledActions nextLedAction = LEDS_11;
+// Bouton  3 minutes
+// S -> D2 (interrupt pin), - -> GND
+OneButton button3Min(2, true);
+
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 5;   // define DIO pin (any digital pin)
 const byte PIN_BUZZER = 11;   // S sur D11, via réisistance de 100-200 ohms
 SevenSegmentTM1637    display(PIN_CLK, PIN_DIO);
-const uint8_t TM1637Brightness = 40;
+const uint8_t TM1637Brightness = 30;
 
 unsigned long previousMillisBlink;
 unsigned long previousMillisTimer;
@@ -80,6 +85,8 @@ void setup()
 
   startButton.attachClick(myStartFunction);
 
+  button3Min.attachClick(my3MinFunction);
+
   display.begin();                        // initializes the display
   display.setBacklight(TM1637Brightness); // set the brightness to 100 %
   display.print("init");                  // display INIT on the display
@@ -107,6 +114,7 @@ void loop()
   // keep watching the push button:
   rotarySwitch.tick();
   startButton.tick();
+  button3Min.tick();
 
   unsigned long now = millis();
   minutes = countDown / 60;
@@ -117,6 +125,7 @@ void loop()
   {
     case COUNTDOWN_IDLE:
       isBlink = false;
+      display.on();
       noTone(PIN_BUZZER);
       break;
   
@@ -173,6 +182,11 @@ void loop()
         isTimer = false;
         myNextAction = COUNTDOWN_IDLE;
       }
+      break;
+  
+    case COUNTDOWN_SLEEP:
+      isBlink = false;
+      display.off();
       break;
   
   }
@@ -312,6 +326,14 @@ void myStartFunction() {
   } else {
     // Stop
     isTimer = false;
+    myNextAction = COUNTDOWN_IDLE;
+  }
+}
+
+void my3MinFunction() {
+  if (myNextAction == COUNTDOWN_IDLE) {
+    myNextAction = COUNTDOWN_SLEEP;
+  } else if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
   }
 }
