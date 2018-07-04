@@ -330,10 +330,26 @@ void myStartFunction() {
   }
 }
 
-void my3MinFunction() {
+void myStartStopScreen() {
   if (myNextAction == COUNTDOWN_IDLE) {
     myNextAction = COUNTDOWN_SLEEP;
   } else if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
   }
+}
+
+void my3MinFunction() {
+  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = 300; 
+  } 
+}
+void my5MinFunction() {
+  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = 300; 
+  } 
+}
+void my10MinFunction() {
+  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = 600; 
+  } 
 }
