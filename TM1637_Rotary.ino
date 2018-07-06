@@ -43,7 +43,11 @@ OneButton startButton(10, true);
 
 // Bouton  3 minutes
 // S -> D2 (interrupt pin), - -> GND
-OneButton button3Min(2, true);
+OneButton buttonPreset1(2, true);
+// Bouton  5 minutes
+// OneButton buttonPreset2(__PIN__, true);
+// Bouton  10 minutes
+// OneButton buttonPreset3(__PIN__, true);
 
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
@@ -54,10 +58,12 @@ const uint8_t TM1637Brightness = 30;
 
 unsigned long previousMillisBlink;
 unsigned long previousMillisTimer;
+unsigned long previousMillisSleepTimer = 0;
 unsigned long previousMillisAlarm; // pour limiter la duréee de l'alarme de fin
 unsigned long alarmLength = 10UL * 1000; 
+unsigned long sleepTime = 20UL * 1000; 
 
-uint16_t timer = 179; // 5 minutes 180; // 3 minutes
+uint16_t timer = 0; // 5 minutes 180; // 3 minutes
 uint16_t countDown;
 uint8_t minutes;
 uint8_t seconds;
@@ -67,6 +73,16 @@ bool isBlink;
 // Pour savoir si le timer tourne ou non
 bool isTimer;
 int pos = 0;
+
+// const char* etats[] = {"COUNTDOWN_IDLE", "ROTARY_SET_MINUTES", "ROTARY_SET_SECONDS", "ROTARY_RESET", "COUNTDOWN_1", "COUNTDOWN_2", "COUNTDOWN_3", "COUNTDOWN_END", "COUNTDOWN_SLEEP"};
+
+// Presets pour les 3 boutons : 3, 5 et 10 minutes
+int presets[] = {180, 300, 600};
+
+// Pour le buzzer
+int notes[] = { 932, 1175, 988, 932 };
+int notesDurations[] = { 250, 250, 250, 500 };
+int notesIntervals[] = { 40, 80, 40, 80 };
 
 void setup()
 {
@@ -85,7 +101,9 @@ void setup()
 
   startButton.attachClick(myStartFunction);
 
-  button3Min.attachClick(my3MinFunction);
+  buttonPreset1.attachClick(myPreset1Function);
+  // buttonPreset2.attachClick(myPreset2Function);
+  // buttonPreset3.attachClick(myPreset3Function);
 
   display.begin();                        // initializes the display
   display.setBacklight(TM1637Brightness); // set the brightness to 100 %
@@ -110,16 +128,22 @@ void loop()
 {
   static int resetBlinkCount = 0; // static : la valeur est préservée entre les loop()
   static bool ledState = true; // sert à gérer les clignotements
+  static int countBuzzer = 0;
 //  rotaryEncoder.tick(); // Inutile là, c'est dans ISR() que ça se passe
   // keep watching the push button:
   rotarySwitch.tick();
   startButton.tick();
-  button3Min.tick();
+  buttonPreset1.tick();
+  // buttonPreset2.tick();
+  // buttonPreset3.tick();
 
   unsigned long now = millis();
   minutes = countDown / 60;
   seconds = countDown % 60;
 
+if (myNextAction != COUNTDOWN_IDLE) {
+  previousMillisSleepTimer = now;
+}
 
   switch (myNextAction)
   {
@@ -127,6 +151,14 @@ void loop()
       isBlink = false;
       display.on();
       noTone(PIN_BUZZER);
+      if (previousMillisSleepTimer == 0) {
+        // déclenche le timer pour la mise en veille
+        previousMillisSleepTimer = now;
+      }
+      if (now - previousMillisSleepTimer >= sleepTime) {
+        // mis en veille
+        myNextAction = COUNTDOWN_SLEEP;
+      }
       break;
   
     case ROTARY_SET_MINUTES:
@@ -139,6 +171,8 @@ void loop()
 
     case ROTARY_RESET:
       isBlink = false;
+      countDown = 0;
+      myNextAction = COUNTDOWN_IDLE;
       break;
   
     case COUNTDOWN_1:
@@ -146,7 +180,7 @@ void loop()
       if (now - previousMillisTimer >= 1000) {
         previousMillisTimer = now;
         countDown--;
-        if (countDown < 10) {
+        if (countDown <= 10) {
           myNextAction = COUNTDOWN_2;
         }
       }
@@ -156,7 +190,9 @@ void loop()
       if (now - previousMillisTimer >= 1000) {
         previousMillisTimer = now;
         countDown--;
-        if (countDown < 5) {
+        tone(PIN_BUZZER, notes[0], 10);
+
+        if (countDown <= 5) {
           myNextAction = COUNTDOWN_3;
         }
       }
@@ -167,17 +203,20 @@ void loop()
       if (now - previousMillisTimer >= 1000) {
         previousMillisTimer = now;
         countDown--;
+        tone(PIN_BUZZER, notes[0], 50);
+
         if (countDown == 0) {
           previousMillisAlarm = now;
           myNextAction = COUNTDOWN_END;
         }
-        tone(PIN_BUZZER, 554, 250);
       }
       break;
      
     case COUNTDOWN_END:
       isBlink = false;
-      tone(PIN_BUZZER, 1047, 250);
+      tone(PIN_BUZZER, notes[countBuzzer], notesDurations[countBuzzer]);           // Output sound frequency to buzzerPin
+      delay(notesIntervals[countBuzzer]);
+      countBuzzer =  (countBuzzer == 3) ? 0 : countBuzzer + 1;      
       if (now - previousMillisAlarm >= alarmLength) {
         isTimer = false;
         myNextAction = COUNTDOWN_IDLE;
@@ -188,7 +227,6 @@ void loop()
       isBlink = false;
       display.off();
       break;
-  
   }
 
 
@@ -296,7 +334,9 @@ void loop()
 
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myClickFunction() {
-  if (myNextAction == COUNTDOWN_IDLE) {
+  if (myNextAction == COUNTDOWN_SLEEP) {
+    myNextAction = COUNTDOWN_IDLE;
+  } else if (myNextAction == COUNTDOWN_IDLE) {
     myNextAction = ROTARY_SET_MINUTES;
     pos = minutes;
   } else if (myNextAction == ROTARY_SET_MINUTES) {
@@ -310,18 +350,23 @@ void myClickFunction() {
 
 // this function will be called when the button was pressed during 1 second.
 void myLongPressFunction() {
+  if (myNextAction == COUNTDOWN_SLEEP) {
+    myNextAction = COUNTDOWN_IDLE;
+  } else if (myNextAction == COUNTDOWN_IDLE) {
   // Mise à zéro du compteur
-  if (myNextAction == COUNTDOWN_IDLE) {
     myNextAction = ROTARY_RESET;
-    countDown = 0;
   }
 }
 
 void myStartFunction() {
-  if (myNextAction == COUNTDOWN_IDLE) {
+  if (myNextAction == COUNTDOWN_SLEEP) {
+    myNextAction = COUNTDOWN_IDLE;
+  } else if (myNextAction == COUNTDOWN_IDLE) {
     if (!isTimer && countDown != 0) {
       isTimer = true;
       myNextAction = COUNTDOWN_1;
+    } else {
+      previousMillisSleepTimer = millis();
     }
   } else {
     // Stop
@@ -330,26 +375,24 @@ void myStartFunction() {
   }
 }
 
-void myStartStopScreen() {
-  if (myNextAction == COUNTDOWN_IDLE) {
-    myNextAction = COUNTDOWN_SLEEP;
-  } else if (myNextAction == COUNTDOWN_SLEEP) {
+void myPreset1Function() {
+  if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
-  }
-}
-
-void my3MinFunction() {
-  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
-    countDown = 300; 
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = presets[0];
   } 
 }
-void my5MinFunction() {
-  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
-    countDown = 300; 
+void myPreset2Function() {
+  if (myNextAction == COUNTDOWN_SLEEP) {
+    myNextAction = COUNTDOWN_IDLE;
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = presets[1]; 
   } 
 }
-void my10MinFunction() {
-  if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
-    countDown = 600; 
+void myPreset3Function() {
+  if (myNextAction == COUNTDOWN_SLEEP) {
+    myNextAction = COUNTDOWN_IDLE;
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+    countDown = presets[2]; 
   } 
 }
