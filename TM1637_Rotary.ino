@@ -42,12 +42,11 @@ OneButton rotarySwitch(6, true);
 OneButton startButton(10, true);
 
 // Bouton  3 minutes
-// S -> D2 (interrupt pin), - -> GND
-OneButton buttonPreset1(2, true);
+OneButton buttonPreset1(7, true);
 // Bouton  5 minutes
-// OneButton buttonPreset2(__PIN__, true);
+OneButton buttonPreset2(8, true);
 // Bouton  10 minutes
-// OneButton buttonPreset3(__PIN__, true);
+OneButton buttonPreset3(9, true);
 
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
@@ -102,8 +101,8 @@ void setup()
   startButton.attachClick(myStartFunction);
 
   buttonPreset1.attachClick(myPreset1Function);
-  // buttonPreset2.attachClick(myPreset2Function);
-  // buttonPreset3.attachClick(myPreset3Function);
+  buttonPreset2.attachClick(myPreset2Function);
+  buttonPreset3.attachClick(myPreset3Function);
 
   display.begin();                        // initializes the display
   display.setBacklight(TM1637Brightness); // set the brightness to 100 %
@@ -134,8 +133,8 @@ void loop()
   rotarySwitch.tick();
   startButton.tick();
   buttonPreset1.tick();
-  // buttonPreset2.tick();
-  // buttonPreset3.tick();
+  buttonPreset2.tick();
+  buttonPreset3.tick();
 
   unsigned long now = millis();
   minutes = countDown / 60;
@@ -172,7 +171,7 @@ if (myNextAction != COUNTDOWN_IDLE) {
     case ROTARY_RESET:
       isBlink = false;
       countDown = 0;
-      myNextAction = COUNTDOWN_IDLE;
+      // myNextAction = COUNTDOWN_IDLE; // c'est fait après le clignotement
       break;
   
     case COUNTDOWN_1:
@@ -378,21 +377,24 @@ void myStartFunction() {
 void myPreset1Function() {
   if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
+    previousMillisSleepTimer = millis();
     countDown = presets[0];
   } 
 }
 void myPreset2Function() {
   if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
+    previousMillisSleepTimer = millis();
     countDown = presets[1]; 
   } 
 }
 void myPreset3Function() {
   if (myNextAction == COUNTDOWN_SLEEP) {
     myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) { 
+  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
+    previousMillisSleepTimer = millis();
     countDown = presets[2]; 
   } 
 }
