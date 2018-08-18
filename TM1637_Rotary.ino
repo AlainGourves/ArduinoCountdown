@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "LowPower.h"
 #include <OneButton.h>
 #include <RotaryEncoder.h>
 #include <SevenSegmentTM1637.h>
@@ -14,8 +15,10 @@ RotaryEncoder rotaryEncoder(A2, A3);
 // Switch du rotary encoder sur D10
 OneButton rotarySwitch(10, true);
 // Bouton  Start/Stop
+// Use pin 2 as wake up pin
+const byte wakeUpPin = 2;
 // S -> D2 (interrupt pin), - -> GND
-OneButton startButton(2, true);
+OneButton startButton(wakeUpPin, true);
 
 // Bouton  3 minutes
 OneButton buttonPreset1(7, true);
@@ -116,7 +119,10 @@ void setup() {
 ISR(PCINT1_vect) {
   rotaryEncoder.tick(); // just call tick() to check the state.
 }
-
+// ISR for INT0
+void wakeUp() {
+  // Just a handler for the pin interrupt.
+}
 // Read the current position of the encoder and print out when changed.
 void loop() {
   static int resetBlinkCount = 0; // static : la valeur est préservée entre les loop()
@@ -210,7 +216,30 @@ void loop() {
       break;
 
     case COUNTDOWN_SLEEP:
-      display.off();
+        // Allow wake up pin to trigger interrupt on low.
+        attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
+
+        // Coupe l'alim du TM1637
+        //digitalWrite(PIN_TRANS, LOW);
+        display.off();
+        Serial.println("Go to sleep !");
+        Serial.flush();
+        
+        // Enter power down state with ADC and BOD module disabled.
+        // Wake up when wake up pin is low.
+        LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
+
+        // Disable external pin interrupt on wake up pin.
+        detachInterrupt(0);
+        Serial.println("Awake !");
+        Serial.flush();
+        // rétablit l'alim du TM1637
+        display.on();
+         // digitalWrite(PIN_TRANS, HIGH);
+         // display.begin();                        // initializes the display
+         // display.setBacklight(TM1637Brightness); // set the brightness to 100 %
+         // display.clear();                  // display INIT on the display
+        myNextAction = COUNTDOWN_IDLE;
       break;
   }
 
@@ -347,9 +376,7 @@ void myRotaryLongPressFunction() {
 }
 
 void myStartFunction() {
-  if (myNextAction == COUNTDOWN_SLEEP) {
-    myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE) {
+  if (myNextAction == COUNTDOWN_IDLE) {
     if (!isTimer && countDown != 0) {
       isTimer = true;
       myNextAction = COUNTDOWN_1;

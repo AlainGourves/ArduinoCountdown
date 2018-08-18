@@ -8,6 +8,7 @@
         "map": "cpp",
         "set": "cpp",
         "unordered_set": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "numeric": "cpp"
     }
 }
