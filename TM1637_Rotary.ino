@@ -8,7 +8,7 @@
 #define ROTARYMIN 0
 #define ROTARYMAX 59
 
-// Setup a RoraryEncoder for pins A2 and A3:
+// Setup a RoraryEncoder for pins A2 (CLK) and A3 (DT):
 RotaryEncoder rotaryEncoder(A2, A3);
 
 
@@ -30,6 +30,7 @@ OneButton buttonPreset3(9, true);
 
 const byte PIN_CLK = 4;   // define CLK pin (any digital pin)
 const byte PIN_DIO = 5;   // define DIO pin (any digital pin)
+const byte PIN_TRANS = 6; // transistor qui active le TM1637
 const byte PIN_BUZZER = 11;   // S sur D11, via résistance de 100-200 ohms
 SevenSegmentTM1637    display(PIN_CLK, PIN_DIO);
 const uint8_t TM1637Brightness = 30;
@@ -86,7 +87,7 @@ ledActions nextLedAction = LEDS_11;
 
 void setup() {
   Serial.begin(57600);
-  Serial.println("Hello !");
+  Serial.println(F("Hello !"));
 
   rotaryEncoder.setPosition(pos);
   // You may have to modify the next 2 lines if using other pins than A2 and A3
@@ -104,10 +105,13 @@ void setup() {
   buttonPreset2.attachClick(myPreset2Function);
   buttonPreset3.attachClick(myPreset3Function);
 
+  pinMode(PIN_BUZZER, OUTPUT);
+
+  digitalWrite(PIN_TRANS, HIGH);
   display.begin();                        // initializes the display
   display.setBacklight(TM1637Brightness); // set the brightness
   display.print("init");
-  delay(250);
+  delay(500);
   display.clear();
 
   countDown = timer;
@@ -141,7 +145,7 @@ void loop() {
   buttonPreset3.tick();
 
   if (myNextAction != COUNTDOWN_IDLE) {
-    previousMillisSleepTimer = now;
+    previousMillisSleepTimer = 0;
   }
 
   switch (myNextAction)
@@ -154,7 +158,7 @@ void loop() {
         // déclenche le timer pour la mise en veille
         previousMillisSleepTimer = now;
       }
-      if (now - previousMillisSleepTimer >= sleepTime) {
+      if (now - previousMillisSleepTimer > sleepTime) {
         // mis en veille
         myNextAction = COUNTDOWN_SLEEP;
       }
@@ -211,19 +215,20 @@ void loop() {
       countBuzzer =  (countBuzzer == 3) ? 0 : countBuzzer + 1;
       if (now - previousMillisAlarm >= alarmLength) {
         isTimer = false;
-        myNextAction = COUNTDOWN_IDLE;
+        myNextAction = COUNTDOWN_SLEEP;
       }
       break;
 
     case COUNTDOWN_SLEEP:
+        noTone(PIN_BUZZER);
         // Allow wake up pin to trigger interrupt on low.
         attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
 
         // Coupe l'alim du TM1637
-        //digitalWrite(PIN_TRANS, LOW);
         display.off();
-        Serial.println("Go to sleep !");
-        Serial.flush();
+        digitalWrite(PIN_TRANS, LOW);
+        // Serial.println(F("Go to sleep !"));
+        // Serial.flush();
         
         // Enter power down state with ADC and BOD module disabled.
         // Wake up when wake up pin is low.
@@ -231,14 +236,15 @@ void loop() {
 
         // Disable external pin interrupt on wake up pin.
         detachInterrupt(0);
-        Serial.println("Awake !");
-        Serial.flush();
+        // Serial.println(F("Awake !"));
+        // Serial.flush();
+
         // rétablit l'alim du TM1637
-        display.on();
-         // digitalWrite(PIN_TRANS, HIGH);
-         // display.begin();                        // initializes the display
-         // display.setBacklight(TM1637Brightness); // set the brightness to 100 %
-         // display.clear();                  // display INIT on the display
+        //display.on();
+         digitalWrite(PIN_TRANS, HIGH);
+         display.begin();                        // initializes the display
+         display.setBacklight(TM1637Brightness); // set the brightness to 100 %
+         display.clear();                  // display INIT on the display
         myNextAction = COUNTDOWN_IDLE;
       break;
   }
@@ -391,26 +397,20 @@ void myStartFunction() {
 }
 
 void myPreset1Function() {
-  if (myNextAction == COUNTDOWN_SLEEP) {
-    myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
-    previousMillisSleepTimer = millis();
+  if (myNextAction == COUNTDOWN_IDLE) {
+    previousMillisSleepTimer = 0;
     countDown = presets[0];
   }
 }
 void myPreset2Function() {
-  if (myNextAction == COUNTDOWN_SLEEP) {
-    myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
-    previousMillisSleepTimer = millis();
+  if (myNextAction == COUNTDOWN_IDLE) {
+    previousMillisSleepTimer = 0;
     countDown = presets[1];
   }
 }
 void myPreset3Function() {
-  if (myNextAction == COUNTDOWN_SLEEP) {
-    myNextAction = COUNTDOWN_IDLE;
-  } else if (myNextAction == COUNTDOWN_IDLE || myNextAction == ROTARY_SET_MINUTES) {
-    previousMillisSleepTimer = millis();
+  if (myNextAction == COUNTDOWN_IDLE) {
+    previousMillisSleepTimer = 0;
     countDown = presets[2];
   }
 }
