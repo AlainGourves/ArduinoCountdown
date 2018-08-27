@@ -71,18 +71,51 @@ typedef enum {
   COUNTDOWN_2,        // 5s < countDown <= 10s
   COUNTDOWN_3,        // countDown <= 5s
   COUNTDOWN_END,      // countDown = 0
-  COUNTDOWN_SLEEP     // veille
+  COUNTDOWN_SLEEP,     // veille
+  BATTERY_CHECK,
+  BATTERY_SHOW,
+  BATTERY_WAIT
 } myActions;
 myActions myNextAction = COUNTDOWN_IDLE;
+
+// const char* etats[] = {"COUNTDOWN_IDLE", "ROTARY_SET_MINUTES", "ROTARY_SET_SECONDS", "ROTARY_RESET", "COUNTDOWN_1", "COUNTDOWN_2", "COUNTDOWN_3", "COUNTDOWN_END", "COUNTDOWN_SLEEP", "BATTERY_CHECK", "BATTERY_SHOW", "BATTERY_WAIT"};
 
 // Etats de l'affichage Led
 typedef enum {
   LEDS_00, // tout éteint
   LEDS_01, // minutes éteint, secondes allumé
   LEDS_10, // minutes allumé, secondes éteint
-  LEDS_11  // tout allumé
+  LEDS_11,  // tout allumé
+  LEDS_BATT
 } ledActions;
 ledActions nextLedAction = LEDS_11;
+
+// const char* etatsLeds[] = {"LEDS_00", "LEDS_01", "LEDS_10", "LEDS_11", "LEDS_BATT"};
+
+// Pour la mesure de la batterie
+unsigned int ADCValue;
+double Voltage;
+double Vcc;
+bool isVoltage = false;
+
+long readVcc() {
+  long result;
+  // Read 1.1V reference against AVcc
+  // set the reference to Vcc and the measurement to the internal 1.1V reference
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1); // Atmel datasheet p317
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Start conversion
+  while (bit_is_set(ADCSRA, ADSC)); // measuring
+  uint8_t low  = ADCL; // must read ADCL first - it then locks ADCH
+  uint8_t high = ADCH; // unlocks both
+
+  result = (high << 8) | low;
+  //  Serial.println(result);
+
+  result = 1105863L / result; // Calculate Vcc (in mV); valeur = [valeur de la ref interne]*1023*1000
+  //result = 1125300L / result; // Calculate Vcc (in mV); 1125300 = 1.1*1023*1000
+  return result; // Vcc in millivolts
+}
 
 
 void setup() {
@@ -100,6 +133,9 @@ void setup() {
   rotarySwitch.attachLongPressStart(myRotaryLongPressFunction);
 
   startButton.attachClick(myStartFunction);
+  startButton.attachLongPressStart(myStartStartLongPressFunction);    // Lance la mesure de la batterie
+  startButton.attachDuringLongPress(myStartDuringLongPressFunction);  // Affiche la charge de la batterie
+  startButton.attachLongPressStop(myStartStopLongPressFunction);      // Retour à l'affichage normal
 
   buttonPreset1.attachClick(myPreset1Function);
   buttonPreset2.attachClick(myPreset2Function);
@@ -137,6 +173,11 @@ void loop() {
   minutes = countDown / 60;
   seconds = countDown % 60;
 
+  // if (now - previousMillisBlink >= 250) {
+  //   Serial.print(etats[myNextAction]);
+  //   Serial.print(" / ");
+  //   Serial.println(etatsLeds[nextLedAction]);
+  // }
   // keep watching the push button:
   rotarySwitch.tick();
   startButton.tick();
@@ -220,32 +261,46 @@ void loop() {
       break;
 
     case COUNTDOWN_SLEEP:
-        noTone(PIN_BUZZER);
-        // Allow wake up pin to trigger interrupt on low.
-        attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
+      noTone(PIN_BUZZER);
+      // Allow wake up pin to trigger interrupt on low.
+      attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
 
-        // Coupe l'alim du TM1637
-        display.off();
-        digitalWrite(PIN_TRANS, LOW);
-        // Serial.println(F("Go to sleep !"));
-        // Serial.flush();
-        
-        // Enter power down state with ADC and BOD module disabled.
-        // Wake up when wake up pin is low.
-        LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
+      // Coupe l'alim du TM1637
+      display.off();
+      digitalWrite(PIN_TRANS, LOW);
+      // Serial.println(F("Go to sleep !"));
+      // Serial.flush();
 
-        // Disable external pin interrupt on wake up pin.
-        detachInterrupt(0);
-        // Serial.println(F("Awake !"));
-        // Serial.flush();
+      // Enter power down state with ADC and BOD module disabled.
+      // Wake up when wake up pin is low.
+      LowPower.powerDown(SLEEP_FOREVER, ADC_OFF, BOD_OFF);
 
-        // rétablit l'alim du TM1637
-        //display.on();
-         digitalWrite(PIN_TRANS, HIGH);
-         display.begin();                        // initializes the display
-         display.setBacklight(TM1637Brightness); // set the brightness to 100 %
-         display.clear();                  // display INIT on the display
-        myNextAction = COUNTDOWN_IDLE;
+      // Disable external pin interrupt on wake up pin.
+      detachInterrupt(0);
+      // Serial.println(F("Awake !"));
+      // Serial.flush();
+
+      // rétablit l'alim du TM1637
+      //display.on();
+      digitalWrite(PIN_TRANS, HIGH);
+      display.begin();                        // initializes the display
+      display.setBacklight(TM1637Brightness); // set the brightness to 100 %
+      display.clear();                  // display INIT on the display
+      myNextAction = COUNTDOWN_IDLE;
+      break;
+
+    case BATTERY_CHECK:
+      measureVoltage();
+      break;
+
+    case BATTERY_SHOW:
+      display.clear();
+      nextLedAction = LEDS_BATT;
+      myNextAction = BATTERY_WAIT;
+      break;
+
+    case BATTERY_WAIT:
+      // on attend
       break;
   }
 
@@ -311,13 +366,14 @@ void loop() {
           myNextAction = COUNTDOWN_IDLE;
         }
       }
+    } else if (myNextAction == BATTERY_WAIT) {
+      nextLedAction = LEDS_BATT;
     }
     ledState = !ledState;
     previousMillisBlink = now;
   }
 
   // Affichage Led
-  display.setColonOn(true);
   switch (nextLedAction) {
     case LEDS_00:
       display.setColonOn(false);
@@ -336,6 +392,7 @@ void loop() {
       break;
 
     case LEDS_10:
+      display.setColonOn(true);
       buffer[0] = display.encode(minutes / 10);
       buffer[1] = display.encode(minutes % 10);
       buffer[2] = 0;
@@ -343,15 +400,74 @@ void loop() {
       break;
 
     case LEDS_11:
+      display.setColonOn(true);
       buffer[0] = display.encode(minutes / 10);
       buffer[1] = display.encode(minutes % 10);
       buffer[2] = display.encode(seconds / 10);
       buffer[3] = display.encode(seconds % 10);
       break;
+
+    case LEDS_BATT:
+      display.setColonOn(false);
+      buffer[0] = B00110110;
+      buffer[1] = B00110110;
+      buffer[2] = B00110110;
+      buffer[3] = B00110110;
+      if (Voltage > 3.995) {
+        /* 8 */
+      } else if (Voltage > 3.91 && Voltage <= 3.995) {
+        /* 7 */
+        buffer[0] = B00000110;
+      } else if (Voltage > 3.87 && Voltage <= 3.91) {
+        /* 6 */
+        buffer[0] = B00000000;
+      } else if (Voltage > 3.775 && Voltage <= 3.87) {
+        /* 5 */
+        buffer[0] = B00000000;
+        buffer[1] = B00000110;
+      } else if (Voltage > 3.72 && Voltage <= 3.775) {
+        /* 4 */
+        buffer[0] = B00000000;
+        buffer[1] = B00000000;
+      } else if (Voltage > 3.695 && Voltage <= 3.72) {
+        /* 3 */
+        buffer[0] = B00000000;
+        buffer[1] = B00000000;
+        buffer[2] = B00000110;
+      } else if (Voltage > 3.67 && Voltage <= 3.695) {
+        /* 2 */
+        buffer[0] = B00000000;
+        buffer[1] = B00000000;
+        buffer[2] = B00000000;
+      } else if (Voltage > 3.5 && Voltage <= 3.67) {
+        /* 1 */
+        buffer[0] = B00000000;
+        buffer[1] = B00000000;
+        buffer[2] = B00000000;
+        buffer[3] = B00000110;
+      } else if (Voltage < 3.5) {
+        /* 0  display : "Batt"*/
+        buffer[0] = B01111000;
+        buffer[1] = B01111000;
+        buffer[2] = B01011111;
+        buffer[3] = B01111111;
+      }
+      break;
   }  // end of switch
 
   display.printRaw(buffer, 4, 0);
 } // loop ()
+
+void measureVoltage() {
+  Vcc = readVcc() / 1000.0;
+  ADCValue = analogRead(0);
+  Voltage = (ADCValue / 1024.0) * Vcc;
+  Serial.print(Voltage);
+  Serial.print("\t");
+  Serial.println(Vcc);
+  isVoltage = true;
+  display.clear();
+}
 
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myRotaryClickFunction() {
@@ -381,21 +497,6 @@ void myRotaryLongPressFunction() {
   }
 }
 
-void myStartFunction() {
-  if (myNextAction == COUNTDOWN_IDLE) {
-    if (!isTimer && countDown != 0) {
-      isTimer = true;
-      myNextAction = COUNTDOWN_1;
-    } else {
-      previousMillisSleepTimer = millis();
-    }
-  } else {
-    // Stop
-    isTimer = false;
-    myNextAction = COUNTDOWN_IDLE;
-  }
-}
-
 void myPreset1Function() {
   if (myNextAction == COUNTDOWN_IDLE) {
     previousMillisSleepTimer = 0;
@@ -412,5 +513,40 @@ void myPreset3Function() {
   if (myNextAction == COUNTDOWN_IDLE) {
     previousMillisSleepTimer = 0;
     countDown = presets[2];
+  }
+}
+
+void myStartFunction() {
+  if (myNextAction == COUNTDOWN_IDLE) {
+    if (!isTimer && countDown != 0) {
+      isTimer = true;
+      myNextAction = COUNTDOWN_1;
+    } else {
+      previousMillisSleepTimer = millis();
+    }
+  } else {
+    // Stop
+    isTimer = false;
+    myNextAction = COUNTDOWN_IDLE;
+  }
+}
+
+void myStartStartLongPressFunction() {
+  if (myNextAction == COUNTDOWN_IDLE) {
+    myNextAction = BATTERY_CHECK;
+  }
+}
+
+void myStartDuringLongPressFunction() {
+  if (isVoltage && myNextAction == BATTERY_CHECK) {
+    myNextAction = BATTERY_SHOW;
+  }
+}
+
+void myStartStopLongPressFunction() {
+  if (myNextAction == BATTERY_WAIT) {
+    isVoltage = false;
+    display.clear();
+    myNextAction = COUNTDOWN_IDLE;
   }
 }
