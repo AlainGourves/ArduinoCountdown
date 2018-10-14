@@ -11,18 +11,18 @@
 // Setup a RoraryEncoder for pins A2 (CLK) and A3 (DT):
 RotaryEncoder rotaryEncoder(A2, A3);
 
-// Switch du rotary encoder sur D10
-OneButton rotarySwitch(10, true);
+// Switch du rotary encoder sur D7
+OneButton rotarySwitch(7, true);
 // Bouton  Start/Stop
 const byte wakeUpPin = 2; // Use pin 2 as wake up pin
 OneButton startButton(wakeUpPin, true);
 
 // Bouton  3 minutes
-OneButton buttonPreset1(7, true);
+OneButton buttonPreset1(8, true);
 // Bouton  5 minutes
-OneButton buttonPreset2(8, true);
+OneButton buttonPreset2(9, true);
 // Bouton  10 minutes
-OneButton buttonPreset3(9, true);
+OneButton buttonPreset3(10, true);
 
 const byte PIN_CLK = 4; // (TM1637) define CLK pin
 const byte PIN_DIO = 5; // (TM1637) define DIO pin
@@ -169,6 +169,10 @@ void setup()
   isTimer = false;
 } // setup()
 
+ISR (PCINT0_vect)
+ {
+ // handle pin change interrupt for D8 to D13 here
+ }
 // The Interrupt Service Routine for Pin Change Interrupt 1
 // This routine will only be called on any signal change on A2 and A3: exactly where we need to check.
 ISR(PCINT1_vect)
@@ -285,6 +289,10 @@ void loop()
 
   case COUNTDOWN_SLEEP:
     noTone(PIN_BUZZER);
+    // Interrupts sur les boutons presets
+    PCICR |= (1 << PCIE0);   // enables Pin Change Interrupt 0 that covers the pins or Port B.
+    PCIFR  |= bit (PCIF0);   // clear any outstanding interrupts (PCIFR: Pin Change Interrupt Flag Register)
+    PCMSK0 |= (1 << PCINT0) | (1 << PCINT1) | (1 << PCINT2); // enables the interrupt for pins D8, D9, D10.    
     // Allow wake up pin to trigger interrupt on low.
     attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
 
@@ -293,7 +301,7 @@ void loop()
     PORTD &= ~(1 << PORTD6);
     // //digitalWrite(PIN_TRANS, LOW);
 
-    // Déséactive les interrupts du rotary encoder (il n'y a que le btn Start qui réveille l'Arduino)
+    // Déséactive les interrupts du rotary encoder
     PCMSK1 &= ~(1 << PCINT10 | 1 << PCINT11);
 
     // Enter power down state with ADC and BOD module disabled.
@@ -303,6 +311,9 @@ void loop()
     // Disable external pin interrupt on wake up pin.
     detachInterrupt(0);
 
+    // Désactive les interrupts sur les boutons presets
+    PCICR &= ~(1 << PCIE0);   // disable Pin Change Interrupt 0 that covers the pins or Port B.
+    PCMSK0 &= ~(1 << PCINT0) | (1 << PCINT1) | (1 << PCINT2);
     // Réactive les interrupts du rotary encoder
     PCMSK1 |= (1 << PCINT10) | (1 << PCINT11); // This enables the interrupt for pin 2 and 3 of Port C.
 
