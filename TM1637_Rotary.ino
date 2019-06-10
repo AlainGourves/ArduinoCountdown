@@ -8,21 +8,21 @@
 #define ROTARYMIN 0
 #define ROTARYMAX 59
 
-// Setup a RoraryEncoder for pins A2 (CLK) and A3 (DT):
+// Setup a RoratyEncoder for pins A2 (CLK) and A3 (DT):
 RotaryEncoder rotaryEncoder(A2, A3);
 
-// Switch du rotary encoder sur D10
-OneButton rotarySwitch(10, true);
+// Switch du rotary encoder sur D7
+OneButton rotarySwitch(7, true);
 // Bouton  Start/Stop
 const byte wakeUpPin = 2; // Use pin 2 as wake up pin
 OneButton startButton(wakeUpPin, true);
 
 // Bouton  3 minutes
-OneButton buttonPreset1(7, true);
+OneButton buttonPreset1(8, true);
 // Bouton  5 minutes
-OneButton buttonPreset2(8, true);
+OneButton buttonPreset2(9, true);
 // Bouton  10 minutes
-OneButton buttonPreset3(9, true);
+OneButton buttonPreset3(10, true);
 
 const byte PIN_CLK = 4; // (TM1637) define CLK pin
 const byte PIN_DIO = 5; // (TM1637) define DIO pin
@@ -36,7 +36,7 @@ unsigned long previousMillisBlink;          // temps de clignotement des leds
 unsigned long previousMillisTimer;          // pour le calcul des secondes
 unsigned long previousMillisSleepTimer = 0; // stocke la durée avant la mise en veille
 unsigned long previousMillisAlarm;          // pour mesurer la durée de l'alarme de fin
-const unsigned long alarmLength = 10UL * 1000;    // durée de l'alarme de fin
+const unsigned long alarmLength = 117UL * 100;    // durée de l'alarme de fin (correspond à 5 cycles)
 const unsigned long sleepTime = 20UL * 1000;      // temps de déclenchement de la veille
 
 uint16_t timer = 0;
@@ -54,9 +54,9 @@ bool isTimer;
 const int presets[] = {180, 300, 600};
 
 // Pour le buzzer
-const int notes[] = {932, 1175, 988, 932};
-const int notesDurations[] = {250, 250, 250, 500};
-const int notesIntervals[] = {40, 80, 40, 80};
+const int notes[] =           {698, 880, 988, 1175, 1047, 880, 698, 587}; // F5 A5 B5 D6 C6 A5 F5 D5
+const int notesDurations[] =  {250, 100, 200, 100,  200,  100, 200, 100};
+const int notesIntervals[] =  {350, 120, 200, 120,  200,  120, 200, 200};
 
 // Différents états de la machine
 typedef enum
@@ -149,7 +149,7 @@ void setup()
   // digitalWrite(PIN_TRANS, HIGH);
 
   // Pins D3 (PD3), D12 (PB4), A1 (PC1), A4 (PC4) et A5 (PC5) ne sont pas utilisés : à mettre à INPUT_PULLUP pour qu'ils ne soient pas flottants
-  // Par défaut, ils sont à INPUT => par besoin de modifier les registres DDR (Port Data Direction)
+  // Par défaut, ils sont à INPUT => pas besoin de modifier les registres DDR (Port Data Direction)
   // Il faut mettre les bits concernés de PORT à HIGH pour activer le pull-up
   PORTB |= (1 << PORTB4);
   PORTC |= ((1 << PORTC1) | (1 << PORTC4) | (1 << PORTC5));
@@ -169,6 +169,10 @@ void setup()
   isTimer = false;
 } // setup()
 
+ISR (PCINT0_vect)
+ {
+ // handle pin change interrupt for D8 to D13 here
+ }
 // The Interrupt Service Routine for Pin Change Interrupt 1
 // This routine will only be called on any signal change on A2 and A3: exactly where we need to check.
 ISR(PCINT1_vect)
@@ -275,7 +279,7 @@ void loop()
   case COUNTDOWN_END:
     tone(PIN_BUZZER, notes[countBuzzer], notesDurations[countBuzzer]); // Output sound frequency to buzzerPin
     delay(notesIntervals[countBuzzer]);
-    countBuzzer = (countBuzzer == 3) ? 0 : countBuzzer + 1;
+    countBuzzer = (countBuzzer == (sizeof(notes)/sizeof(notes[0])-1)) ? 0 : countBuzzer + 1;
     if (now - previousMillisAlarm >= alarmLength)
     {
       isTimer = false;
@@ -285,6 +289,10 @@ void loop()
 
   case COUNTDOWN_SLEEP:
     noTone(PIN_BUZZER);
+    // Interrupts sur les boutons presets
+    PCICR |= (1 << PCIE0);   // enables Pin Change Interrupt 0 that covers the pins or Port B.
+    PCIFR  |= bit (PCIF0);   // clear any outstanding interrupts (PCIFR: Pin Change Interrupt Flag Register)
+    PCMSK0 |= (1 << PCINT0) | (1 << PCINT1) | (1 << PCINT2); // enables the interrupt for pins D8, D9, D10.    
     // Allow wake up pin to trigger interrupt on low.
     attachInterrupt(digitalPinToInterrupt(wakeUpPin), wakeUp, LOW);
 
@@ -293,7 +301,7 @@ void loop()
     PORTD &= ~(1 << PORTD6);
     // //digitalWrite(PIN_TRANS, LOW);
 
-    // Déséactive les interrupts du rotary encoder (il n'y a que le btn Start qui réveille l'Arduino)
+    // Déséactive les interrupts du rotary encoder
     PCMSK1 &= ~(1 << PCINT10 | 1 << PCINT11);
 
     // Enter power down state with ADC and BOD module disabled.
@@ -303,6 +311,9 @@ void loop()
     // Disable external pin interrupt on wake up pin.
     detachInterrupt(0);
 
+    // Désactive les interrupts sur les boutons presets
+    PCICR &= ~(1 << PCIE0);   // disable Pin Change Interrupt 0 that covers the pins or Port B.
+    PCMSK0 &= ~(1 << PCINT0) | (1 << PCINT1) | (1 << PCINT2);
     // Réactive les interrupts du rotary encoder
     PCMSK1 |= (1 << PCINT10) | (1 << PCINT11); // This enables the interrupt for pin 2 and 3 of Port C.
 
@@ -573,21 +584,24 @@ void measureVoltage()
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myRotaryClickFunction()
 {
-  switch (myNextAction)
+  if (!isTimer)
   {
-  case COUNTDOWN_IDLE:
-    myNextAction = ROTARY_SET_MINUTES;
-    pos = minutes;
-    break;
-  case ROTARY_SET_MINUTES:
-    myNextAction = ROTARY_SET_SECONDS;
-    pos = seconds;
-    break;
-  default:
-    myNextAction = COUNTDOWN_IDLE;
-    break;
+    switch (myNextAction)
+    {
+    case COUNTDOWN_IDLE:
+      myNextAction = ROTARY_SET_MINUTES;
+      pos = minutes;
+      break;
+    case ROTARY_SET_MINUTES:
+      myNextAction = ROTARY_SET_SECONDS;
+      pos = seconds;
+      break;
+    default:
+      myNextAction = COUNTDOWN_IDLE;
+      break;
+    }
+    rotaryEncoder.setPosition(pos);
   }
-  rotaryEncoder.setPosition(pos);
 } // myRotaryClickFunction
 
 // this function will be called when the button was pressed during 1 second.
@@ -633,13 +647,16 @@ void myStartFunction()
 {
   if (myNextAction == COUNTDOWN_IDLE)
   {
-    if (!isTimer && countDown != 0)
-    {
+    if (!isTimer && countDown != 0) {
       isTimer = true;
-      myNextAction = COUNTDOWN_1;
-    }
-    else
-    {
+      if (countDown <= 5) {
+        myNextAction = COUNTDOWN_3;
+      } else if (countDown <= 10) {
+        myNextAction = COUNTDOWN_2;
+      } else {
+        myNextAction = COUNTDOWN_1;
+      }
+    } else {
       previousMillisSleepTimer = millis();
     }
   }
