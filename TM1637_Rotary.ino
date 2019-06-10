@@ -8,7 +8,7 @@
 #define ROTARYMIN 0
 #define ROTARYMAX 59
 
-// Setup a RoraryEncoder for pins A2 (CLK) and A3 (DT):
+// Setup a RoratyEncoder for pins A2 (CLK) and A3 (DT):
 RotaryEncoder rotaryEncoder(A2, A3);
 
 // Switch du rotary encoder sur D7
@@ -36,7 +36,7 @@ unsigned long previousMillisBlink;          // temps de clignotement des leds
 unsigned long previousMillisTimer;          // pour le calcul des secondes
 unsigned long previousMillisSleepTimer = 0; // stocke la durée avant la mise en veille
 unsigned long previousMillisAlarm;          // pour mesurer la durée de l'alarme de fin
-const unsigned long alarmLength = 10UL * 1000;    // durée de l'alarme de fin
+const unsigned long alarmLength = 117UL * 100;    // durée de l'alarme de fin (correspond à 5 cycles)
 const unsigned long sleepTime = 20UL * 1000;      // temps de déclenchement de la veille
 
 uint16_t timer = 0;
@@ -54,9 +54,9 @@ bool isTimer;
 const int presets[] = {180, 300, 600};
 
 // Pour le buzzer
-const int notes[] = {932, 1175, 988, 932};
-const int notesDurations[] = {250, 250, 250, 500};
-const int notesIntervals[] = {40, 80, 40, 80};
+const int notes[] =           {698, 880, 988, 1175, 1047, 880, 698, 587}; // F5 A5 B5 D6 C6 A5 F5 D5
+const int notesDurations[] =  {250, 100, 200, 100,  200,  100, 200, 100};
+const int notesIntervals[] =  {350, 120, 200, 120,  200,  120, 200, 200};
 
 // Différents états de la machine
 typedef enum
@@ -149,7 +149,7 @@ void setup()
   // digitalWrite(PIN_TRANS, HIGH);
 
   // Pins D3 (PD3), D12 (PB4), A1 (PC1), A4 (PC4) et A5 (PC5) ne sont pas utilisés : à mettre à INPUT_PULLUP pour qu'ils ne soient pas flottants
-  // Par défaut, ils sont à INPUT => par besoin de modifier les registres DDR (Port Data Direction)
+  // Par défaut, ils sont à INPUT => pas besoin de modifier les registres DDR (Port Data Direction)
   // Il faut mettre les bits concernés de PORT à HIGH pour activer le pull-up
   PORTB |= (1 << PORTB4);
   PORTC |= ((1 << PORTC1) | (1 << PORTC4) | (1 << PORTC5));
@@ -279,7 +279,7 @@ void loop()
   case COUNTDOWN_END:
     tone(PIN_BUZZER, notes[countBuzzer], notesDurations[countBuzzer]); // Output sound frequency to buzzerPin
     delay(notesIntervals[countBuzzer]);
-    countBuzzer = (countBuzzer == 3) ? 0 : countBuzzer + 1;
+    countBuzzer = (countBuzzer == (sizeof(notes)/sizeof(notes[0])-1)) ? 0 : countBuzzer + 1;
     if (now - previousMillisAlarm >= alarmLength)
     {
       isTimer = false;
@@ -584,21 +584,24 @@ void measureVoltage()
 // this function will be called when the button was pressed 1 time and them some time has passed.
 void myRotaryClickFunction()
 {
-  switch (myNextAction)
+  if (!isTimer)
   {
-  case COUNTDOWN_IDLE:
-    myNextAction = ROTARY_SET_MINUTES;
-    pos = minutes;
-    break;
-  case ROTARY_SET_MINUTES:
-    myNextAction = ROTARY_SET_SECONDS;
-    pos = seconds;
-    break;
-  default:
-    myNextAction = COUNTDOWN_IDLE;
-    break;
+    switch (myNextAction)
+    {
+    case COUNTDOWN_IDLE:
+      myNextAction = ROTARY_SET_MINUTES;
+      pos = minutes;
+      break;
+    case ROTARY_SET_MINUTES:
+      myNextAction = ROTARY_SET_SECONDS;
+      pos = seconds;
+      break;
+    default:
+      myNextAction = COUNTDOWN_IDLE;
+      break;
+    }
+    rotaryEncoder.setPosition(pos);
   }
-  rotaryEncoder.setPosition(pos);
 } // myRotaryClickFunction
 
 // this function will be called when the button was pressed during 1 second.
@@ -644,13 +647,16 @@ void myStartFunction()
 {
   if (myNextAction == COUNTDOWN_IDLE)
   {
-    if (!isTimer && countDown != 0)
-    {
+    if (!isTimer && countDown != 0) {
       isTimer = true;
-      myNextAction = COUNTDOWN_1;
-    }
-    else
-    {
+      if (countDown <= 5) {
+        myNextAction = COUNTDOWN_3;
+      } else if (countDown <= 10) {
+        myNextAction = COUNTDOWN_2;
+      } else {
+        myNextAction = COUNTDOWN_1;
+      }
+    } else {
       previousMillisSleepTimer = millis();
     }
   }
